@@ -1,0 +1,653 @@
+// =============================================================================
+// TrimBook — Multi-tenant SaaS for barbershops
+// Prisma schema (PostgreSQL)
+//
+// Tenant isolation contract:
+//   Every tenant-owned table carries `shopId`. No query should ever read or
+//   write rows for a shop other than the caller's. This is enforced in code by
+//   the tenant-scoped repository layer (see src/server/repositories) and the
+//   Data Access Layer (src/lib/dal.ts), NOT by the database alone. The indexes
+//   below make those per-shop lookups fast.
+// =============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Direct connection used by Prisma Migrate when DATABASE_URL points at a
+  // pooled (PgBouncer) endpoint such as Supabase. Optional in local dev.
+  directUrl = env("DIRECT_URL")
+}
+
+// =============================================================================
+// Enums
+// =============================================================================
+
+/// Platform-wide role. A user has exactly one role.
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  BARBER
+  CUSTOMER
+}
+
+enum ShopStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+/// Billing plans. New plans can be added without code changes elsewhere because
+/// pricing/duration live on the Subscription row.
+enum SubscriptionPlan {
+  STARTER
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  GRACE_PERIOD
+  EXPIRED
+  SUSPENDED
+  CANCELLED
+}
+
+enum BarberStatus {
+  ACTIVE
+  ON_LEAVE
+  INACTIVE
+}
+
+enum ServiceStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  RESCHEDULED
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+/// Exceptions to a barber's regular weekly WorkingHours.
+enum AvailabilityType {
+  LEAVE // barber is off (holiday / sick)
+  BLOCK // a specific slot is blocked
+  EXTRA // extra availability outside normal hours
+}
+
+enum PaymentType {
+  SUBSCRIPTION
+  BOOKING
+}
+
+enum PaymentProvider {
+  FLUTTERWAVE
+  MTN_MOMO
+  AIRTEL_MONEY
+  STRIPE
+  CASH
+  MANUAL // recorded by super admin / owner
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESSFUL
+  FAILED
+  REFUNDED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+  IN_APP
+}
+
+enum NotificationType {
+  BOOKING_CONFIRMATION
+  BOOKING_REMINDER_24H
+  BOOKING_REMINDER_2H
+  BOOKING_CANCELLED
+  BOOKING_RESCHEDULED
+  SUBSCRIPTION_REMINDER
+  SUBSCRIPTION_EXPIRED
+  SUBSCRIPTION_ACTIVATED
+  PAYMENT_RECEIPT
+  GENERIC
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+  READ
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// =============================================================================
+// Identity
+// =============================================================================
+
+/// Authentication identity for every human on the platform, regardless of role.
+/// Passwords are hashed with bcrypt (see src/lib/auth/password.ts).
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  phone         String?
+  role          Role      @default(CUSTOMER)
+  image         String?
+  isActive      Boolean   @default(true)
+  emailVerified DateTime?
+  lastLoginAt   DateTime?
+
+  // Staff membership: OWNER / BARBER belong to exactly one shop. NULL for
+  // SUPER_ADMIN and CUSTOMER (customers relate to shops via Customer records).
+  shopId String?
+  shop   Shop?   @relation("ShopMembers", fields: [shopId], references: [id], onDelete: SetNull)
+
+  // A user may own one or more shops.
+  ownedShops Shop[] @relation("ShopOwner")
+
+  // Role-specific profiles.
+  barber    Barber?    @relation("BarberUser")
+  customers Customer[] @relation("CustomerUser")
+
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  supportTickets SupportTicket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([role])
+}
+
+// =============================================================================
+// Tenant: Shop
+// =============================================================================
+
+model Shop {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique // public profile URL: /shops/[slug]
+  description String?
+  email       String?
+  phone       String?
+  address     String?
+  city        String?
+  country     String     @default("Uganda")
+  latitude    Float?
+  longitude   Float?
+  logoUrl     String?
+  coverUrl    String?
+  timezone    String     @default("Africa/Kampala")
+  currency    String     @default("UGX")
+  status      ShopStatus @default(ACTIVE)
+
+  ownerId String
+  owner   User   @relation("ShopOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  members        User[]          @relation("ShopMembers")
+  subscription   Subscription?
+  barbers        Barber[]
+  services       Service[]
+  customers      Customer[]
+  appointments   Appointment[]
+  payments       Payment[]
+  reviews        Review[]
+  workingHours   WorkingHours[]
+  availability   Availability[]
+  notifications  Notification[]
+  auditLogs      AuditLog[]
+  supportTickets SupportTicket[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+  @@index([city])
+  @@index([status])
+}
+
+// =============================================================================
+// Subscription & Billing
+// =============================================================================
+
+/// Exactly one subscription per shop. Lifecycle dates drive the hourly cron
+/// job that transitions status and locks/unlocks features.
+model Subscription {
+  id     String @id @default(cuid())
+  shopId String @unique
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  plan   SubscriptionPlan   @default(STARTER)
+  status SubscriptionStatus @default(TRIAL)
+
+  // Money is stored as an integer in the smallest currency unit. UGX has no
+  // sub-unit in practice, so this is whole shillings (default 25,000).
+  amount           Int    @default(25000)
+  currency         String @default("UGX")
+  billingCycleDays Int    @default(30)
+
+  trialEndsAt        DateTime?
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime? // "expiry date"
+  gracePeriodEndsAt  DateTime?
+  cancelledAt        DateTime?
+  dataRetentionUntil DateTime? // cancelledAt + 90 days
+  autoRenew          Boolean   @default(false)
+
+  // Reminder bookkeeping so the cron job doesn't double-send.
+  lastReminderStage  String? // "7d" | "3d" | "1d" | "expiry" | "grace"
+  lastReminderSentAt DateTime?
+
+  payments Payment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([currentPeriodEnd])
+  @@index([gracePeriodEndsAt])
+}
+
+// =============================================================================
+// Barbers
+// =============================================================================
+
+model Barber {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  // Optional login. An owner can add a barber who never signs in.
+  userId String? @unique
+  user   User?   @relation("BarberUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  name       String
+  photoUrl   String?
+  bio        String?
+  speciality String?
+  phone      String?
+  email      String?
+  status     BarberStatus @default(ACTIVE)
+  isBookable Boolean      @default(true)
+
+  workingHours WorkingHours[]
+  availability Availability[]
+  appointments Appointment[]
+  reviews      Review[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([shopId, status])
+}
+
+// =============================================================================
+// Services
+// =============================================================================
+
+model Service {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  name            String
+  description     String?
+  price           Int // smallest currency unit (whole UGX)
+  currency        String        @default("UGX")
+  durationMinutes Int
+  category        String?
+  imageUrl        String?
+  status          ServiceStatus @default(ACTIVE)
+
+  appointments Appointment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([shopId, status])
+}
+
+// =============================================================================
+// Customers (per-shop record; may link to a platform User)
+// =============================================================================
+
+model Customer {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation("CustomerUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  name  String
+  phone String?
+  email String?
+  notes String?
+
+  totalBookings Int       @default(0)
+  totalSpent    Int       @default(0)
+  firstVisitAt  DateTime?
+  lastVisitAt   DateTime?
+
+  appointments Appointment[]
+  reviews      Review[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // One customer record per registered user per shop.
+  @@unique([shopId, userId])
+  @@index([shopId])
+  @@index([shopId, phone])
+}
+
+// =============================================================================
+// Appointments
+// =============================================================================
+
+model Appointment {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  barberId String
+  barber   Barber @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+
+  status          AppointmentStatus @default(PENDING)
+  startTime       DateTime
+  endTime         DateTime
+  durationMinutes Int
+  priceAtBooking  Int
+  currency        String            @default("UGX")
+  notes           String?
+
+  customerArrived    Boolean   @default(false)
+  confirmedAt        DateTime?
+  completedAt        DateTime?
+  cancelledAt        DateTime?
+  cancellationReason String?
+  cancelledById      String? // userId who cancelled
+
+  // Reschedule chain (self-relation).
+  rescheduledFromId String?
+  rescheduledFrom   Appointment?  @relation("Reschedule", fields: [rescheduledFromId], references: [id], onDelete: SetNull)
+  rescheduledTo     Appointment[] @relation("Reschedule")
+
+  // Notification bookkeeping so reminders aren't sent twice.
+  confirmationSentAt DateTime?
+  reminder24SentAt   DateTime?
+  reminder2SentAt    DateTime?
+
+  payment Payment?
+  review  Review?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([shopId, startTime])
+  @@index([shopId, status])
+  @@index([barberId, startTime])
+  @@index([customerId])
+  @@index([serviceId])
+}
+
+// =============================================================================
+// Payments (subscription renewals and booking payments)
+// =============================================================================
+
+model Payment {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  type PaymentType
+
+  subscriptionId String?
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  appointmentId String?      @unique
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  customerId String? // booking payer (Customer.id)
+
+  amount        Int
+  currency      String          @default("UGX")
+  provider      PaymentProvider
+  providerRef   String? // external transaction id (Flutterwave/MoMo/etc.)
+  status        PaymentStatus   @default(PENDING)
+  paidAt        DateTime?
+  receiptNumber String?         @unique
+  failureReason String?
+  metadata      Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([shopId, status])
+  @@index([provider])
+  @@index([subscriptionId])
+  @@index([providerRef])
+}
+
+// =============================================================================
+// Reviews
+// =============================================================================
+
+model Review {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  barberId String?
+  barber   Barber? @relation(fields: [barberId], references: [id], onDelete: SetNull)
+
+  appointmentId String?      @unique
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  rating      Int // 1..5 (validated in app layer)
+  comment     String?
+  isPublished Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([barberId])
+  @@index([shopId, rating])
+}
+
+// =============================================================================
+// Scheduling: regular weekly hours + exceptions
+// =============================================================================
+
+/// Regular weekly opening hours. barberId NULL means shop-level default hours.
+/// Times stored as minutes from midnight (e.g. 09:00 = 540) for easy comparison.
+model WorkingHours {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  barberId String?
+  barber   Barber? @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  dayOfWeek    DayOfWeek
+  isClosed     Boolean   @default(false)
+  startMinutes Int       @default(540) // 09:00
+  endMinutes   Int       @default(1080) // 18:00
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([barberId, dayOfWeek])
+}
+
+/// One-off exceptions to the weekly schedule (leave, blocked slots, extra hours).
+model Availability {
+  id     String @id @default(cuid())
+  shopId String
+  shop   Shop   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  barberId String
+  barber   Barber @relation(fields: [barberId], references: [id], onDelete: Cascade)
+
+  type      AvailabilityType
+  startTime DateTime
+  endTime   DateTime
+  reason    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([shopId])
+  @@index([barberId, startTime])
+}
+
+// =============================================================================
+// Notifications
+// =============================================================================
+
+model Notification {
+  id     String  @id @default(cuid())
+  shopId String? // NULL for platform-level (super admin) notifications
+  shop   Shop?   @relation(fields: [shopId], references: [id], onDelete: Cascade)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  customerId String? // recipient customer when not a platform user
+
+  channel NotificationChannel
+  type    NotificationType
+  title   String
+  body    String
+  status  NotificationStatus  @default(PENDING)
+
+  sentAt DateTime?
+  readAt DateTime?
+  error  String?
+
+  relatedAppointmentId String?
+  metadata             Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([shopId])
+  @@index([type])
+  @@index([status])
+}
+
+// =============================================================================
+// Audit logs
+// =============================================================================
+
+model AuditLog {
+  id     String  @id @default(cuid())
+  shopId String? // NULL for platform-level actions
+  shop   Shop?   @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  actorId   String?
+  actor     User?   @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actorRole Role?
+
+  action      String // e.g. "subscription.activated", "appointment.cancelled"
+  entityType  String?
+  entityId    String?
+  description String?
+  ipAddress   String?
+  userAgent   String?
+  metadata    Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([shopId])
+  @@index([actorId])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// =============================================================================
+// Support tickets (managed by Super Admin)
+// =============================================================================
+
+model SupportTicket {
+  id     String  @id @default(cuid())
+  shopId String?
+  shop   Shop?   @relation(fields: [shopId], references: [id], onDelete: SetNull)
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  subject  String
+  message  String
+  status   TicketStatus   @default(OPEN)
+  priority TicketPriority @default(MEDIUM)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@index([shopId])
+}
+
+// =============================================================================
+// Platform settings (singleton-ish key/value store for Super Admin)
+// =============================================================================
+
+model PlatformSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     Json
+  updatedAt DateTime @updatedAt
+}
