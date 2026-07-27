@@ -26,6 +26,28 @@ export type FormState =
   | { ok: false; message?: string; fieldErrors?: Record<string, string[]> }
   | null;
 
+/**
+ * Turn an unexpected error (most commonly a database connection/credentials
+ * failure) into a friendly form message instead of letting it crash the page.
+ */
+function unexpected(error: unknown): { ok: false; message: string } {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (
+    /database|connection|ECONNREFUSED|ENOTFOUND|authentication failed|prisma|P1\d{3}/i.test(
+      msg,
+    )
+  ) {
+    console.error("[auth] database error:", msg);
+    return {
+      ok: false,
+      message:
+        "We can't reach the database right now. Please check the connection and try again.",
+    };
+  }
+  console.error("[auth] unexpected error:", error);
+  return { ok: false, message: "Something went wrong. Please try again." };
+}
+
 // -----------------------------------------------------------------------------
 // Login
 // -----------------------------------------------------------------------------
@@ -52,7 +74,7 @@ export async function loginAction(
     if (error instanceof AuthError) {
       return { ok: false, message: "Invalid email or password." };
     }
-    throw error;
+    return unexpected(error);
   }
 
   // Sign-in succeeded — route the user to their role's home.
@@ -97,7 +119,7 @@ export async function registerCustomerAction(
     if (error instanceof AuthError) {
       return { ok: false, message: "Could not sign you in. Please try logging in." };
     }
-    throw error;
+    return unexpected(error);
   }
 
   return { ok: true, redirectTo: ROLE_HOME.CUSTOMER };
@@ -137,7 +159,7 @@ export async function registerShopAction(
     if (error instanceof AuthError) {
       return { ok: false, message: "Account created, but sign-in failed. Please log in." };
     }
-    throw error;
+    return unexpected(error);
   }
 
   return { ok: true, redirectTo: ROLE_HOME.OWNER };

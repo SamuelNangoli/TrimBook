@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect } from "react";
+import { useActionState, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -9,10 +9,11 @@ import {
   type FormState,
 } from "@/server/actions/auth.actions";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PasswordInput } from "@/components/ui/password-input";
+import { ValidatedInput } from "@/components/ui/validated-input";
+import { PasswordField } from "@/components/ui/password-field";
 import { FieldError } from "@/components/auth/field-error";
+import { isEmail, isPhone, minLen } from "@/lib/validators";
 
 export function ShopRegisterForm() {
   const router = useRouter();
@@ -20,6 +21,7 @@ export function ShopRegisterForm() {
     registerShopAction,
     null,
   );
+  const [password, setPassword] = useState("");
 
   useEffect(() => {
     if (state?.ok) {
@@ -32,28 +34,39 @@ export function ShopRegisterForm() {
   }, [state, router]);
 
   const fieldErrors = state && !state.ok ? state.fieldErrors : undefined;
+  const generalError = state && !state.ok ? state.message : undefined;
 
   return (
     <form action={action} className="space-y-4">
+      {generalError && (
+        <p
+          role="alert"
+          className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {generalError}
+        </p>
+      )}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="ownerName">Your name</Label>
-          <Input
+          <ValidatedInput
             id="ownerName"
             name="ownerName"
             autoComplete="name"
             autoFocus
             placeholder="e.g. John Doe"
+            validate={minLen(2)}
             required
           />
           <FieldError errors={fieldErrors?.ownerName} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="shopName">Shop name</Label>
-          <Input
+          <ValidatedInput
             id="shopName"
             name="shopName"
             placeholder="e.g. Fresh Cuts Barbershop"
+            validate={minLen(2)}
             required
           />
           <FieldError errors={fieldErrors?.shopName} />
@@ -62,13 +75,14 @@ export function ShopRegisterForm() {
 
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
-        <Input
+        <ValidatedInput
           id="email"
           name="email"
           type="email"
           inputMode="email"
           autoComplete="email"
           placeholder="you@example.com"
+          validate={isEmail}
           required
         />
         <FieldError errors={fieldErrors?.email} />
@@ -77,30 +91,39 @@ export function ShopRegisterForm() {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="phone">Phone</Label>
-          <Input
+          <ValidatedInput
             id="phone"
             name="phone"
             type="tel"
             inputMode="tel"
             placeholder="+256 7XX XXX XXX"
+            validate={isPhone}
             required
           />
           <FieldError errors={fieldErrors?.phone} />
         </div>
         <div className="space-y-2">
           <Label htmlFor="city">City</Label>
-          <Input id="city" name="city" placeholder="e.g. Kampala" required />
+          <ValidatedInput
+            id="city"
+            name="city"
+            placeholder="e.g. Kampala"
+            validate={minLen(2)}
+            required
+          />
           <FieldError errors={fieldErrors?.city} />
         </div>
       </div>
 
       <div className="space-y-2">
         <Label htmlFor="password">Password</Label>
-        <PasswordInput
+        <PasswordField
           id="password"
           name="password"
           autoComplete="new-password"
           placeholder="At least 8 characters"
+          requirements
+          onValueChange={setPassword}
           required
         />
         <FieldError errors={fieldErrors?.password} />
@@ -108,11 +131,12 @@ export function ShopRegisterForm() {
 
       <div className="space-y-2">
         <Label htmlFor="confirmPassword">Confirm password</Label>
-        <PasswordInput
+        <PasswordField
           id="confirmPassword"
           name="confirmPassword"
           autoComplete="new-password"
           placeholder="Re-enter your password"
+          match={password}
           required
         />
         <FieldError errors={fieldErrors?.confirmPassword} />

@@ -6,10 +6,11 @@ import { toast } from "sonner";
 
 import { loginAction, type FormState } from "@/server/actions/auth.actions";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PasswordInput } from "@/components/ui/password-input";
+import { ValidatedInput } from "@/components/ui/validated-input";
+import { PasswordField } from "@/components/ui/password-field";
 import { FieldError } from "@/components/auth/field-error";
+import { isEmail } from "@/lib/validators";
 
 export function LoginForm() {
   const router = useRouter();
@@ -43,7 +44,7 @@ export function LoginForm() {
       )}
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
-        <Input
+        <ValidatedInput
           id="email"
           name="email"
           type="email"
@@ -51,16 +52,15 @@ export function LoginForm() {
           autoComplete="email"
           autoFocus
           placeholder="you@example.com"
+          validate={isEmail}
           required
         />
         <FieldError errors={state && !state.ok ? state.fieldErrors?.email : undefined} />
       </div>
 
       <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="password">Password</Label>
-        </div>
-        <PasswordInput
+        <Label htmlFor="password">Password</Label>
+        <PasswordField
           id="password"
           name="password"
           autoComplete="current-password"
