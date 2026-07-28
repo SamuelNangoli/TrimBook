@@ -34,7 +34,16 @@ export default async function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <SettingsForm shop={shop} />
+          <SettingsForm
+            shop={{
+              name: shop.name,
+              city: shop.city ?? null,
+              description: shop.description ?? null,
+              phone: shop.phone ?? null,
+              email: shop.email ?? null,
+              address: shop.address ?? null,
+            }}
+          />
         </CardContent>
       </Card>
     </div>

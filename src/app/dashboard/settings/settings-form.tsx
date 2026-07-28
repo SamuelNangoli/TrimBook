@@ -3,7 +3,6 @@
 import { useActionState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import type { Shop } from "@prisma/client";
 
 import { updateShopAction, type FormState } from "@/server/actions/shop.actions";
 import { Button } from "@/components/ui/button";
@@ -12,7 +11,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { FieldError } from "@/components/auth/field-error";
 
-export function SettingsForm({ shop }: { shop: Shop }) {
+export type ShopFormData = {
+  name: string;
+  city: string | null;
+  description: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+};
+
+export function SettingsForm({ shop }: { shop: ShopFormData }) {
   const router = useRouter();
   const [state, action, pending] = useActionState<FormState, FormData>(
     updateShopAction,

@@ -3,11 +3,36 @@
 import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import {
+  Menu,
+  X,
+  LayoutDashboard,
+  CalendarCheck,
+  Users,
+  Scissors,
+  Contact,
+  CreditCard,
+  Settings,
+  Store,
+  LifeBuoy,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import type { NavItem } from "@/components/dashboard/nav-config";
+import type { NavItem, IconKey } from "@/components/dashboard/nav-config";
 import { Badge } from "@/components/ui/badge";
+
+const ICONS: Record<IconKey, LucideIcon> = {
+  LayoutDashboard,
+  CalendarCheck,
+  Users,
+  Scissors,
+  Contact,
+  CreditCard,
+  Settings,
+  Store,
+  LifeBuoy,
+};
 
 function isActive(pathname: string, href: string) {
   if (href === "/dashboard" || href === "/admin") return pathname === href;
@@ -27,7 +52,7 @@ function NavLinks({
     <nav className="grid gap-1" aria-label="Dashboard">
       {items.map((item) => {
         const active = isActive(pathname, item.href);
-        const Icon = item.icon;
+        const Icon = ICONS[item.icon];
 
         if (item.soon) {
           return (
