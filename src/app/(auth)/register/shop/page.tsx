@@ -11,9 +11,7 @@ import {
 } from "@/components/ui/card";
 import { ShopRegisterForm } from "./shop-register-form";
 
-
 export const metadata: Metadata = { title: "Start your barbershop" };
-
 
 export default function ShopRegisterPage() {
   return (
