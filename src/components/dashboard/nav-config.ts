@@ -22,9 +22,9 @@ export type NavItem = {
 
 export const OWNER_NAV: NavItem[] = [
   { href: "/dashboard", label: "Overview", icon: "LayoutDashboard", locksWithSubscription: true },
-  { href: "/dashboard/bookings", label: "Bookings", icon: "CalendarCheck", soon: true },
+  { href: "/dashboard/bookings", label: "Bookings", icon: "CalendarCheck" },
   { href: "/dashboard/barbers", label: "Barbers", icon: "Users", soon: true },
-  { href: "/dashboard/services", label: "Services", icon: "Scissors", soon: true },
+  { href: "/dashboard/services", label: "Services", icon: "Scissors" },
   { href: "/dashboard/customers", label: "Customers", icon: "Contact", soon: true },
   { href: "/dashboard/billing", label: "Billing", icon: "CreditCard" },
   { href: "/dashboard/settings", label: "Settings", icon: "Settings" },
