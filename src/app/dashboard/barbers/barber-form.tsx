@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar } from "@/components/ui/avatar";
+import { PhotoUpload } from "@/components/ui/photo-upload";
 import { FieldError } from "@/components/auth/field-error";
 
 export type BarberDefaults = {
@@ -36,7 +36,6 @@ export function BarberForm({
 }) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, null);
   const [name, setName] = useState(defaults?.name ?? "");
-  const [photo, setPhoto] = useState(defaults?.photoUrl ?? "");
   const router = useRouter();
 
   useEffect(() => {
@@ -52,21 +51,10 @@ export function BarberForm({
 
   return (
     <form action={formAction} className="space-y-5">
-      <div className="flex items-center gap-4">
-        <Avatar name={name || "?"} src={photo || null} className="size-16 text-lg" />
-        <div className="flex-1 space-y-2">
-          <Label htmlFor="photoUrl">Photo URL (optional)</Label>
-          <Input
-            id="photoUrl"
-            name="photoUrl"
-            type="url"
-            inputMode="url"
-            value={photo}
-            onChange={(e) => setPhoto(e.target.value)}
-            placeholder="https://…/photo.jpg"
-          />
-          <FieldError errors={errs?.photoUrl} />
-        </div>
+      <div className="space-y-2">
+        <Label>Photo (optional)</Label>
+        <PhotoUpload name="photoUrl" personName={name} defaultValue={defaults?.photoUrl} />
+        <FieldError errors={errs?.photoUrl} />
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
