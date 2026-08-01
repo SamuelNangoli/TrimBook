@@ -63,7 +63,7 @@ export default async function HomePage() {
             <Link href="/register/shop">Start your 14-day free trial</Link>
           </Button>
           <Button asChild size="lg" variant="outline">
-            <Link href="/register">Book as a customer</Link>
+            <Link href="/shops">Book as a customer</Link>
           </Button>
         </div>
       </section>

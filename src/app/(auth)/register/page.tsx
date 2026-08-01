@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
 
@@ -23,7 +24,9 @@ export default function RegisterPage() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <RegisterForm />
+        <Suspense fallback={<div className="h-96" />}>
+          <RegisterForm />
+        </Suspense>
       </CardContent>
       <CardFooter className="text-sm text-muted-foreground">
         <p>

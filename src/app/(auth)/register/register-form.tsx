@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import {
@@ -17,6 +17,7 @@ import { isEmail, isPhone, minLen } from "@/lib/validators";
 
 export function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [state, action, pending] = useActionState<FormState, FormData>(
     registerCustomerAction,
     null,
@@ -26,12 +27,13 @@ export function RegisterForm() {
   useEffect(() => {
     if (state?.ok) {
       toast.success("Account created. Welcome to TrimBook!");
-      router.push(state.redirectTo || "/account");
+      const callbackUrl = searchParams.get("callbackUrl");
+      router.push(callbackUrl || state.redirectTo || "/account");
       router.refresh();
     } else if (state && !state.ok && state.message) {
       toast.error(state.message);
     }
-  }, [state, router]);
+  }, [state, router, searchParams]);
 
   const fieldErrors = state && !state.ok ? state.fieldErrors : undefined;
   const generalError = state && !state.ok ? state.message : undefined;
