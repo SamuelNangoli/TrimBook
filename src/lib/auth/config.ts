@@ -15,6 +15,11 @@ import { loginSchema } from "@/lib/validations/auth";
  * checks in the Data Access Layer (see src/lib/dal.ts).
  */
 export const authConfig = {
+  // Trust the incoming request's host for callback/redirect URLs. This keeps
+  // auth working on any deployment domain even if AUTH_URL is unset or stale,
+  // so logout/login never bounce to the wrong host (e.g. localhost).
+  trustHost: true,
+
   session: { strategy: "jwt" },
 
   pages: {

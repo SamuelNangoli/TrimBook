@@ -21,14 +21,16 @@ Copy the values marked *(from your local `.env`)* straight out of your local
 | `CRON_SECRET` | *(from your local `.env`)* |
 | `AUTH_TRUST_HOST` | `true` |
 | `NEXT_PUBLIC_APP_URL` | Your production URL, e.g. `https://trimbook.yourdomain.com` |
-| `AUTH_URL` | Same production URL, e.g. `https://trimbook.yourdomain.com` |
 
 Optional (have sane defaults, override only if needed): `TRIAL_DAYS`,
 `GRACE_PERIOD_DAYS`, `BILLING_CYCLE_DAYS`, `STARTER_PRICE_UGX`,
 `CANCELLED_RETENTION_DAYS`.
 
-> ⚠️ Do **not** set `NEXT_PUBLIC_APP_URL` / `AUTH_URL` to `localhost` in
-> production — use your real domain, or auth callbacks and links break.
+> ⚠️ **Do NOT set `AUTH_URL` or `NEXTAUTH_URL` on Vercel** (and never to
+> `localhost`). With `AUTH_TRUST_HOST=true` the app detects the real request
+> host automatically, so login/logout redirect to the correct domain. A stale
+> `localhost` value here is the usual cause of *"page cannot be reached"* after
+> logout. `NEXT_PUBLIC_APP_URL` should be your real domain (used only for links).
 
 ## 2. Redeploy
 

@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { AuthError } from "next-auth";
 
 import { signIn, signOut } from "@/lib/auth";
@@ -169,6 +170,12 @@ export async function registerShopAction(
 // Logout
 // -----------------------------------------------------------------------------
 export async function logoutAction(): Promise<void> {
+  // Build an absolute redirect from the real request host so logout always
+  // returns to the current domain — never a stale AUTH_URL (e.g. localhost).
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host");
+  const proto = h.get("x-forwarded-proto") ?? "https";
+  const redirectTo = host ? `${proto}://${host}/login` : "/login";
   // signOut throws a NEXT_REDIRECT that must propagate — do not catch it.
-  await signOut({ redirectTo: "/login" });
+  await signOut({ redirectTo });
 }
