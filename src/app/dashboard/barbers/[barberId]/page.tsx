@@ -17,6 +17,7 @@ import {
 import { BarberForm } from "../barber-form";
 import { WorkingHoursEditor, type DayHours } from "./working-hours-editor";
 import { AvailabilityManager, type ExceptionRow } from "./availability-manager";
+import { LoginAccess } from "./login-access";
 
 export const metadata: Metadata = { title: "Manage barber" };
 
@@ -41,7 +42,10 @@ export default async function ManageBarberPage(props: {
   const { shopId, shop } = await requireShopContext();
   const { barberId } = await props.params;
 
-  const barber = await prisma.barber.findFirst({ where: { id: barberId, shopId } });
+  const barber = await prisma.barber.findFirst({
+    where: { id: barberId, shopId },
+    include: { user: { select: { email: true } } },
+  });
   if (!barber) notFound();
 
   const [hours, exceptions] = await Promise.all([
@@ -120,6 +124,21 @@ export default async function ManageBarberPage(props: {
               status: barber.status,
               isBookable: barber.isBookable,
             }}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Login access</CardTitle>
+          <CardDescription>Let this barber sign in to view their appointments.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <LoginAccess
+            barberId={barberId}
+            hasLogin={!!barber.userId}
+            loginEmail={barber.user?.email ?? null}
+            defaultEmail={barber.email}
           />
         </CardContent>
       </Card>

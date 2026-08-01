@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, LogIn } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/dal";
 import { resolveShopAccess, SHOP_UNAVAILABLE_MESSAGE } from "@/lib/subscription/policy";
 import { PublicHeader } from "@/components/public/public-header";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PublicBookingForm } from "./public-booking-form";
 
@@ -66,33 +65,32 @@ export default async function BookPage(props: {
               This shop isn&apos;t quite ready for online booking yet. Please check back soon.
             </CardContent>
           </Card>
-        ) : !user ? (
-          <Card>
-            <CardContent className="space-y-3 p-5">
-              <p className="text-sm">Sign in to book your appointment.</p>
-              <div className="flex gap-2">
-                <Button asChild>
-                  <Link href={`/login?callbackUrl=/shops/${slug}/book`}>
-                    <LogIn className="size-4" /> Sign in
-                  </Link>
-                </Button>
-                <Button asChild variant="outline">
-                  <Link href={`/register?callbackUrl=/shops/${slug}/book`}>Create account</Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
         ) : (
-          <Card>
-            <CardContent className="p-5">
-              <PublicBookingForm
-                slug={slug}
-                services={shop.services}
-                barbers={shop.barbers}
-                todayStr={todayStr}
-              />
-            </CardContent>
-          </Card>
+          <>
+            {!user && (
+              <p className="text-sm text-muted-foreground">
+                Booking as a guest.{" "}
+                <Link
+                  href={`/login?callbackUrl=/shops/${slug}/book`}
+                  className="font-medium text-foreground underline-offset-4 hover:underline"
+                >
+                  Sign in
+                </Link>{" "}
+                to track your bookings.
+              </p>
+            )}
+            <Card>
+              <CardContent className="p-5">
+                <PublicBookingForm
+                  slug={slug}
+                  services={shop.services}
+                  barbers={shop.barbers}
+                  todayStr={todayStr}
+                  isLoggedIn={!!user}
+                />
+              </CardContent>
+            </Card>
+          </>
         )}
       </main>
     </div>

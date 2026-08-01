@@ -1,7 +1,9 @@
 "use client";
 
 import { useActionState, useEffect, useState, useTransition } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
+import { CheckCircle2 } from "lucide-react";
 
 import {
   bookAppointmentAction,
@@ -26,11 +28,13 @@ export function PublicBookingForm({
   services,
   barbers,
   todayStr,
+  isLoggedIn,
 }: {
   slug: string;
   services: Service[];
   barbers: Barber[];
   todayStr: string;
+  isLoggedIn: boolean;
 }) {
   const [state, action, submitting] = useActionState<BookState, FormData>(
     bookAppointmentAction,
@@ -55,6 +59,31 @@ export function PublicBookingForm({
   useEffect(() => {
     if (state && !state.ok) toast.error(state.message);
   }, [state]);
+
+  if (state?.ok) {
+    return (
+      <div className="space-y-4 py-4 text-center">
+        <CheckCircle2 className="mx-auto size-12 text-success" />
+        <div>
+          <h2 className="text-lg font-semibold">Booking requested!</h2>
+          <p className="text-sm text-muted-foreground">
+            The shop will confirm your appointment shortly
+            {state.loggedIn ? "" : " — keep your phone handy"}.
+          </p>
+        </div>
+        <div className="flex flex-wrap justify-center gap-2">
+          {state.loggedIn && (
+            <Button asChild>
+              <Link href="/account">View my bookings</Link>
+            </Button>
+          )}
+          <Button asChild variant="outline">
+            <Link href="/shops">Browse more shops</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <form action={action} className="space-y-5">
@@ -136,12 +165,36 @@ export function PublicBookingForm({
         )}
       </div>
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="phone">Contact phone (optional)</Label>
-          <Input id="phone" name="phone" type="tel" inputMode="tel" placeholder="+256 7XX XXX XXX" />
+      {!isLoggedIn ? (
+        <div className="grid gap-5 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="guestName">Your name</Label>
+            <Input id="guestName" name="guestName" placeholder="e.g. John Doe" required />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="guestPhone">Phone</Label>
+            <Input
+              id="guestPhone"
+              name="guestPhone"
+              type="tel"
+              inputMode="tel"
+              placeholder="+256 7XX XXX XXX"
+              required
+            />
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-2">
+          <Label htmlFor="guestPhone">Contact phone (optional)</Label>
+          <Input
+            id="guestPhone"
+            name="guestPhone"
+            type="tel"
+            inputMode="tel"
+            placeholder="+256 7XX XXX XXX"
+          />
+        </div>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="notes">Notes (optional)</Label>
