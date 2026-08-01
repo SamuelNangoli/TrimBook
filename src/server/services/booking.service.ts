@@ -416,6 +416,83 @@ export async function rescheduleAppointment(
 }
 
 // =============================================================================
+// Appointment reminders (24h / 2h before) — run hourly from cron
+// =============================================================================
+
+export type ReminderSummary = { sent24: number; sent2: number };
+
+export async function runAppointmentReminders(now = new Date()): Promise<ReminderSummary> {
+  const in24 = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const in2 = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+
+  const include = {
+    customer: { select: { id: true, userId: true } },
+    service: { select: { name: true } },
+    shop: { select: { name: true, timezone: true } },
+  } as const;
+
+  const due24 = await prisma.appointment.findMany({
+    where: {
+      status: { in: ["PENDING", "CONFIRMED"] },
+      startTime: { gt: now, lte: in24 },
+      reminder24SentAt: null,
+    },
+    include,
+  });
+  for (const a of due24) {
+    await sendApptReminder(a, "24h");
+    await prisma.appointment.update({ where: { id: a.id }, data: { reminder24SentAt: now } });
+  }
+
+  const due2 = await prisma.appointment.findMany({
+    where: {
+      status: { in: ["PENDING", "CONFIRMED"] },
+      startTime: { gt: now, lte: in2 },
+      reminder2SentAt: null,
+    },
+    include,
+  });
+  for (const a of due2) {
+    await sendApptReminder(a, "2h");
+    await prisma.appointment.update({ where: { id: a.id }, data: { reminder2SentAt: now } });
+  }
+
+  return { sent24: due24.length, sent2: due2.length };
+}
+
+async function sendApptReminder(
+  appt: {
+    id: string;
+    startTime: Date;
+    shopId: string;
+    customer: { id: string; userId: string | null };
+    service: { name: string };
+    shop: { name: string; timezone: string };
+  },
+  stage: "24h" | "2h",
+): Promise<void> {
+  const when = new Intl.DateTimeFormat("en-GB", {
+    timeZone: appt.shop.timezone,
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(appt.startTime);
+
+  await notify({
+    type: stage === "24h" ? "BOOKING_REMINDER_24H" : "BOOKING_REMINDER_2H",
+    title: stage === "24h" ? "Appointment tomorrow" : "Appointment soon",
+    body: `Reminder: your ${appt.service.name} at ${appt.shop.name} is on ${when}.`,
+    shopId: appt.shopId,
+    customerId: appt.customer.id,
+    userId: appt.customer.userId,
+    channels: ["IN_APP", "SMS"],
+    relatedAppointmentId: appt.id,
+  });
+}
+
+// =============================================================================
 // helpers
 // =============================================================================
 

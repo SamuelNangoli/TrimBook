@@ -2,17 +2,36 @@ import Link from "next/link";
 import { Scissors } from "lucide-react";
 
 import { APP_NAME } from "@/lib/constants";
+import { getCurrentUser } from "@/lib/dal";
+import { prisma } from "@/lib/db/prisma";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { LogoutButton } from "@/components/auth/logout-button";
+import { NotificationBell, type InboxItem } from "@/components/app/notification-bell";
 
 /** Shared top bar for all authenticated role surfaces. */
-export function AppTopbar({
+export async function AppTopbar({
   role,
   name,
 }: {
   role: string;
   name?: string | null;
 }) {
+  const user = await getCurrentUser();
+  let inbox: InboxItem[] = [];
+  if (user) {
+    const rows = await prisma.notification.findMany({
+      where: { userId: user.id, channel: "IN_APP" },
+      orderBy: { createdAt: "desc" },
+      take: 15,
+    });
+    inbox = rows.map((n) => ({
+      id: n.id,
+      title: n.title,
+      body: n.body,
+      createdAt: n.createdAt.toISOString(),
+      read: n.status === "READ",
+    }));
+  }
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
       <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
@@ -27,6 +46,7 @@ export function AppTopbar({
             <p className="text-sm font-medium leading-tight">{name ?? "Account"}</p>
             <p className="text-xs text-muted-foreground">{role}</p>
           </div>
+          <NotificationBell items={inbox} />
           <ThemeToggle />
           <LogoutButton />
         </div>
