@@ -44,6 +44,30 @@ export function localDayStartUtc(dateStr: string, timeZone: string): Date {
   return new Date(guess.getTime() - offset * 60000);
 }
 
+/** Interpret a `YYYY-MM-DDTHH:MM` wall-clock value in `timeZone` as UTC. */
+export function localDateTimeToUtc(value: string, timeZone: string): Date {
+  const guess = new Date(`${value}:00Z`);
+  const offset = tzOffsetMinutes(timeZone, guess);
+  return new Date(guess.getTime() - offset * 60000);
+}
+
+/** Format an instant as a `YYYY-MM-DDTHH:MM` value in `timeZone` (for inputs). */
+export function utcToLocalInput(date: Date, timeZone: string): string {
+  const dtf = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const p: Record<string, string> = {};
+  for (const part of dtf.formatToParts(date)) p[part.type] = part.value;
+  const hour = p.hour === "24" ? "00" : p.hour;
+  return `${p.year}-${p.month}-${p.day}T${hour}:${p.minute}`;
+}
+
 /** Convert an absolute instant to minutes-from-local-midnight of `dayStartUtc`. */
 export function toLocalMinutes(instant: Date, dayStartUtc: Date): number {
   return Math.round((instant.getTime() - dayStartUtc.getTime()) / 60000);
