@@ -25,7 +25,7 @@ export const OWNER_NAV: NavItem[] = [
   { href: "/dashboard/bookings", label: "Bookings", icon: "CalendarCheck" },
   { href: "/dashboard/barbers", label: "Barbers", icon: "Users" },
   { href: "/dashboard/services", label: "Services", icon: "Scissors" },
-  { href: "/dashboard/customers", label: "Customers", icon: "Contact", soon: true },
+  { href: "/dashboard/customers", label: "Customers", icon: "Contact" },
   { href: "/dashboard/billing", label: "Billing", icon: "CreditCard" },
   { href: "/dashboard/settings", label: "Settings", icon: "Settings" },
 ];
@@ -33,6 +33,6 @@ export const OWNER_NAV: NavItem[] = [
 export const ADMIN_NAV: NavItem[] = [
   { href: "/admin", label: "Overview", icon: "LayoutDashboard" },
   { href: "/admin/billing", label: "Billing & subscriptions", icon: "CreditCard" },
-  { href: "/admin/shops", label: "Shops", icon: "Store", soon: true },
+  { href: "/admin/shops", label: "Shops", icon: "Store" },
   { href: "/admin/tickets", label: "Support", icon: "LifeBuoy", soon: true },
 ];
