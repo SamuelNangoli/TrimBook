@@ -8,4 +8,11 @@ import { authConfig } from "@/lib/auth/config";
  *   - `signOut`  : sign out (server action)
  *   - `handlers` : GET/POST for the /api/auth/[...nextauth] route
  */
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+export const {
+  handlers,
+  auth,
+  signIn,
+  signOut,
+  // Refresh the JWT (role/shopId) after onboarding without re-login.
+  unstable_update: updateSession,
+} = NextAuth(authConfig);

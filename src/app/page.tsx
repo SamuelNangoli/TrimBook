@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Scissors, CalendarCheck, Users, CreditCard } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -7,12 +8,13 @@ import { ROLE_HOME, APP_NAME } from "@/lib/constants";
 import { formatCurrency } from "@/lib/utils";
 
 /**
- * Landing page. Phase 1 ships a clean hero + CTA; the full marketing page
- * (features, pricing, testimonials, FAQ) lands in a later phase.
+ * Landing page. Signed-in users are routed to their role home (this is also the
+ * post-sign-in landing target for Google / magic-link auth).
  */
 export default async function HomePage() {
   const user = await getCurrentUser();
-  const homeHref = user ? ROLE_HOME[user.role] : "/login";
+  if (user) redirect(ROLE_HOME[user.role]);
+  const homeHref = "/login";
 
   const features = [
     { icon: CalendarCheck, title: "Smart bookings", body: "Let customers book the right barber at the right time, 24/7." },

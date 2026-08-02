@@ -159,11 +159,12 @@ enum TicketPriority {
 // =============================================================================
 
 /// Authentication identity for every human on the platform, regardless of role.
-/// Passwords are hashed with bcrypt (see src/lib/auth/password.ts).
+/// Passwordless: users sign in with Google OAuth or an email magic link
+/// (see src/lib/auth/config.ts). `passwordHash` is legacy/optional.
 model User {
   id            String    @id @default(cuid())
   email         String    @unique
-  passwordHash  String
+  passwordHash  String?
   name          String
   phone         String?
   role          Role      @default(CUSTOMER)
@@ -171,6 +172,10 @@ model User {
   isActive      Boolean   @default(true)
   emailVerified DateTime?
   lastLoginAt   DateTime?
+
+  // Auth.js adapter relations (OAuth accounts + sessions).
+  accounts Account[]
+  sessions Session[]
 
   // Staff membership: OWNER / BARBER belong to exactly one shop. NULL for
   // SUPER_ADMIN and CUSTOMER (customers relate to shops via Customer records).
@@ -193,6 +198,49 @@ model User {
 
   @@index([shopId])
   @@index([role])
+}
+
+// =============================================================================
+// Auth.js adapter models (OAuth accounts, sessions, magic-link tokens)
+// =============================================================================
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
 }
 
 // =============================================================================

@@ -1,35 +1,22 @@
 /**
  * Database seed.
  *
- * Creates a super admin, a demo barbershop (owner + trial subscription + a
- * barber and services) and a demo customer. Idempotent: safe to run repeatedly.
+ * Passwordless: users have no password. In development you sign in with the
+ * email magic link — the sign-in URL is printed to the dev server console
+ * (see src/lib/auth/config.ts) — using any of these demo emails.
  *
  * Run with:  npm run db:seed
  */
 import { PrismaClient } from "@prisma/client";
-import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-const DEMO_PASSWORD = "Password123";
-
-async function hash(pw: string) {
-  return bcrypt.hash(pw, 12);
-}
-
 async function main() {
-  const passwordHash = await hash(DEMO_PASSWORD);
-
   // --- Super admin ----------------------------------------------------------
   await prisma.user.upsert({
     where: { email: "admin@trimbook.app" },
     update: {},
-    create: {
-      email: "admin@trimbook.app",
-      name: "Platform Admin",
-      role: "SUPER_ADMIN",
-      passwordHash,
-    },
+    create: { email: "admin@trimbook.app", name: "Platform Admin", role: "SUPER_ADMIN" },
   });
 
   // --- Demo shop owner + shop + trial subscription --------------------------
@@ -41,7 +28,6 @@ async function main() {
       name: "Sam the Owner",
       role: "OWNER",
       phone: "+256700000001",
-      passwordHash,
     },
   });
 
@@ -72,23 +58,13 @@ async function main() {
     },
   });
 
-  // Bind the owner to the shop.
-  await prisma.user.update({
-    where: { id: owner.id },
-    data: { shopId: shop.id },
-  });
+  await prisma.user.update({ where: { id: owner.id }, data: { shopId: shop.id } });
 
-  // --- A barber (with login) ------------------------------------------------
+  // --- A barber (with passwordless login) -----------------------------------
   const barberUser = await prisma.user.upsert({
     where: { email: "barber@trimbook.app" },
     update: {},
-    create: {
-      email: "barber@trimbook.app",
-      name: "Bruno the Barber",
-      role: "BARBER",
-      shopId: shop.id,
-      passwordHash,
-    },
+    create: { email: "barber@trimbook.app", name: "Bruno the Barber", role: "BARBER", shopId: shop.id },
   });
 
   await prisma.barber.upsert({
@@ -111,15 +87,12 @@ async function main() {
     { name: "Hair Wash", price: 5000, durationMinutes: 15 },
     { name: "VIP Grooming", price: 40000, durationMinutes: 60 },
   ];
-
   for (const s of services) {
     const exists = await prisma.service.findFirst({
       where: { shopId: shop.id, name: s.name },
       select: { id: true },
     });
-    if (!exists) {
-      await prisma.service.create({ data: { ...s, shopId: shop.id } });
-    }
+    if (!exists) await prisma.service.create({ data: { ...s, shopId: shop.id } });
   }
 
   // --- Demo customer --------------------------------------------------------
@@ -131,11 +104,10 @@ async function main() {
       name: "Carol the Customer",
       role: "CUSTOMER",
       phone: "+256700000002",
-      passwordHash,
     },
   });
 
-  console.log("✅ Seed complete. Demo logins (password: %s):", DEMO_PASSWORD);
+  console.log("✅ Seed complete. Passwordless demo emails (sign in via magic link):");
   console.log("   super admin : admin@trimbook.app");
   console.log("   shop owner  : owner@trimbook.app");
   console.log("   barber      : barber@trimbook.app");

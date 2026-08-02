@@ -2,12 +2,10 @@ import "server-only";
 
 import { prisma } from "@/lib/db/prisma";
 import { env } from "@/lib/env";
-import { hashPassword } from "@/lib/auth/password";
 import { slugify } from "@/lib/utils";
 import { logAudit } from "@/server/services/audit.service";
-import type { RegisterInput, ShopRegisterInput } from "@/lib/validations/auth";
 
-/** Domain error the auth actions can translate into friendly field errors. */
+/** Domain error the actions can translate into a friendly message. */
 export class EmailTakenError extends Error {
   constructor() {
     super("An account with this email already exists.");
@@ -15,7 +13,7 @@ export class EmailTakenError extends Error {
   }
 }
 
-async function assertEmailAvailable(email: string): Promise<void> {
+export async function assertEmailAvailable(email: string): Promise<void> {
   const existing = await prisma.user.findUnique({
     where: { email },
     select: { id: true },
@@ -28,7 +26,6 @@ async function uniqueShopSlug(name: string): Promise<string> {
   const base = slugify(name) || "shop";
   let candidate = base;
   let n = 1;
-  // Loop is bounded in practice; slugs collide rarely.
   while (await prisma.shop.findUnique({ where: { slug: candidate }, select: { id: true } })) {
     n += 1;
     candidate = `${base}-${n}`;
@@ -36,91 +33,47 @@ async function uniqueShopSlug(name: string): Promise<string> {
   return candidate;
 }
 
-/** Register a customer (self sign-up). Returns the new user id. */
-export async function registerCustomer(input: RegisterInput): Promise<string> {
-  await assertEmailAvailable(input.email);
-
-  const passwordHash = await hashPassword(input.password);
-  const user = await prisma.user.create({
-    data: {
-      name: input.name,
-      email: input.email,
-      phone: input.phone || null,
-      passwordHash,
-      role: "CUSTOMER",
-    },
-    select: { id: true },
-  });
-
-  await logAudit({
-    action: "auth.customer_registered",
-    actorId: user.id,
-    actorRole: "CUSTOMER",
-    entityType: "User",
-    entityId: user.id,
-    description: `Customer ${input.email} registered`,
-  });
-
-  return user.id;
-}
-
-export type ShopRegistrationResult = {
-  userId: string;
-  shopId: string;
-  slug: string;
-};
+export type CreateShopInput = { shopName: string; city: string; phone: string };
+export type CreateShopResult = { shopId: string; slug: string };
 
 /**
- * Onboard a shop owner: creates the owner User, the Shop, and a 14-day TRIAL
- * Subscription — all in one transaction so a tenant is never half-created.
+ * Turn an already-signed-in user into a shop OWNER: creates the Shop and a
+ * 14-day TRIAL subscription, and binds the user to it — all in one transaction.
+ * (Passwordless onboarding: the account already exists via Google/magic link.)
  */
-export async function registerShopOwner(
-  input: ShopRegisterInput,
-): Promise<ShopRegistrationResult> {
-  await assertEmailAvailable(input.email);
+export async function createShopForUser(
+  userId: string,
+  input: CreateShopInput,
+): Promise<CreateShopResult> {
+  const user = await prisma.user.findUniqueOrThrow({
+    where: { id: userId },
+    select: { id: true, email: true, name: true, shopId: true },
+  });
+  if (user.shopId) throw new Error("You already belong to a shop.");
 
-  const passwordHash = await hashPassword(input.password);
   const slug = await uniqueShopSlug(input.shopName);
-
   const now = new Date();
-  const trialEndsAt = new Date(
-    now.getTime() + env.billing.trialDays * 24 * 60 * 60 * 1000,
-  );
+  const trialEndsAt = new Date(now.getTime() + env.billing.trialDays * 24 * 60 * 60 * 1000);
 
-  const result = await prisma.$transaction(async (tx): Promise<ShopRegistrationResult> => {
-    // 1. Owner user (not yet bound to a shop).
-    const user = await tx.user.create({
-      data: {
-        name: input.ownerName,
-        email: input.email,
-        phone: input.phone,
-        passwordHash,
-        role: "OWNER",
-      },
-      select: { id: true },
-    });
-
-    // 2. Shop owned by that user.
+  const result = await prisma.$transaction(async (tx): Promise<CreateShopResult> => {
     const shop = await tx.shop.create({
       data: {
         name: input.shopName,
         slug,
         city: input.city,
         phone: input.phone,
-        email: input.email,
-        ownerId: user.id,
+        email: user.email,
+        ownerId: userId,
         status: "ACTIVE",
       },
       select: { id: true },
     });
 
-    // 3. Bind the owner to their shop (membership).
     await tx.user.update({
-      where: { id: user.id },
-      data: { shopId: shop.id },
+      where: { id: userId },
+      data: { role: "OWNER", shopId: shop.id, phone: input.phone },
     });
 
-    // 4. Trial subscription.
     await tx.subscription.create({
       data: {
         shopId: shop.id,
@@ -134,17 +87,17 @@ export async function registerShopOwner(
       },
     });
 
-    return { userId: user.id, shopId: shop.id, slug };
+    return { shopId: shop.id, slug };
   });
 
   await logAudit({
-    action: "auth.shop_registered",
+    action: "auth.shop_created",
     shopId: result.shopId,
-    actorId: result.userId,
+    actorId: userId,
     actorRole: "OWNER",
     entityType: "Shop",
     entityId: result.shopId,
-    description: `Shop "${input.shopName}" onboarded with 14-day trial`,
+    description: `Shop "${input.shopName}" created with 14-day trial`,
   });
 
   return result;
