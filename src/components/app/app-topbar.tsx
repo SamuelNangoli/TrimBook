@@ -12,9 +12,12 @@ import { NotificationBell, type InboxItem } from "@/components/app/notification-
 export async function AppTopbar({
   role,
   name,
+  leading,
 }: {
   role: string;
   name?: string | null;
+  /** Optional element rendered at the far left (e.g. the sidebar toggle). */
+  leading?: React.ReactNode;
 }) {
   const user = await getCurrentUser();
   let inbox: InboxItem[] = [];
@@ -34,13 +37,16 @@ export async function AppTopbar({
   }
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur">
-      <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Scissors className="size-4" />
-          </span>
-          {APP_NAME}
-        </Link>
+      <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between px-4">
+        <div className="flex items-center gap-3">
+          {leading}
+          <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Scissors className="size-4" />
+            </span>
+            {APP_NAME}
+          </Link>
+        </div>
         <div className="flex items-center gap-3">
           <div className="hidden text-right sm:block">
             <p className="text-sm font-medium leading-tight">{name ?? "Account"}</p>

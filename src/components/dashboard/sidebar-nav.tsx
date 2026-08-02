@@ -1,10 +1,8 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Menu,
   X,
   LayoutDashboard,
   CalendarCheck,
@@ -19,8 +17,10 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { APP_NAME } from "@/lib/constants";
 import type { NavItem, IconKey } from "@/components/dashboard/nav-config";
 import { Badge } from "@/components/ui/badge";
+import { useSidebar } from "@/components/dashboard/sidebar-context";
 
 const ICONS: Record<IconKey, LucideIcon> = {
   LayoutDashboard,
@@ -95,59 +95,53 @@ function NavLinks({
   );
 }
 
+/**
+ * Slide-out sidebar drawer, toggled by the topbar hamburger (via SidebarToggle
+ * + SidebarProvider). Hidden by default on every screen size and animates in
+ * from the left; closes on backdrop click, the X, or selecting an item.
+ */
 export function SidebarNav({ items }: { items: NavItem[] }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const { open, close } = useSidebar();
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="hidden w-60 shrink-0 border-r border-border p-4 lg:block">
-        <div className="sticky top-20">
-          <NavLinks items={items} pathname={pathname} />
-        </div>
-      </aside>
-
-      {/* Mobile toggle */}
-      <div className="lg:hidden">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
-          aria-label={open ? "Close menu" : "Open menu"}
-          className="flex size-11 items-center justify-center rounded-md border border-input"
-        >
-          {open ? <X className="size-5" /> : <Menu className="size-5" />}
-        </button>
-
-        {open && (
-          <>
-            <div
-              className="fixed inset-0 z-40 bg-black/50"
-              onClick={() => setOpen(false)}
-              aria-hidden
-            />
-            <div className="fixed inset-y-0 left-0 z-50 w-64 border-r border-border bg-background p-4 shadow-lg">
-              <div className="mb-4 flex items-center justify-between">
-                <span className="text-sm font-semibold">Menu</span>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  aria-label="Close menu"
-                  className="flex size-9 items-center justify-center rounded-md hover:bg-accent"
-                >
-                  <X className="size-5" />
-                </button>
-              </div>
-              <NavLinks
-                items={items}
-                pathname={pathname}
-                onNavigate={() => setOpen(false)}
-              />
-            </div>
-          </>
+      {/* Backdrop */}
+      <div
+        onClick={close}
+        aria-hidden
+        className={cn(
+          "fixed inset-0 z-40 bg-black/50 transition-opacity duration-200",
+          open ? "opacity-100" : "pointer-events-none opacity-0",
         )}
-      </div>
+      />
+
+      {/* Drawer */}
+      <aside
+        aria-hidden={!open}
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-border bg-background p-4 shadow-xl transition-transform duration-200 ease-out",
+          open ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <span className="flex items-center gap-2 font-semibold tracking-tight">
+            <span className="flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Scissors className="size-4" />
+            </span>
+            {APP_NAME}
+          </span>
+          <button
+            type="button"
+            onClick={close}
+            aria-label="Close menu"
+            className="flex size-9 items-center justify-center rounded-md hover:bg-accent"
+          >
+            <X className="size-5" />
+          </button>
+        </div>
+        <NavLinks items={items} pathname={pathname} onNavigate={close} />
+      </aside>
     </>
   );
 }
