@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
 
@@ -9,35 +10,31 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AuthForm } from "@/components/auth/auth-form";
+import { RegisterForm } from "./register-form";
 
 export const metadata: Metadata = { title: "Create your account" };
 
-export default async function RegisterPage(props: {
-  searchParams: Promise<{ callbackUrl?: string }>;
-}) {
-  const sp = await props.searchParams;
-  const callbackUrl =
-    sp.callbackUrl && sp.callbackUrl.startsWith("/") && !sp.callbackUrl.startsWith("//")
-      ? sp.callbackUrl
-      : "/";
-  const googleEnabled = Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET);
-
+export default function RegisterPage() {
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-xl">Create your account</CardTitle>
         <CardDescription>
-          Sign up with Google or your email — no password to remember.
+          Book appointments at your favourite barbershops.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <AuthForm googleEnabled={googleEnabled} callbackUrl={callbackUrl} />
+        <Suspense fallback={<div className="h-96" />}>
+          <RegisterForm />
+        </Suspense>
       </CardContent>
-      <CardFooter>
-        <p className="text-sm text-muted-foreground">
+      <CardFooter className="text-sm text-muted-foreground">
+        <p>
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-foreground underline-offset-4 hover:underline">
+          <Link
+            href="/login"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
             Sign in
           </Link>
         </p>

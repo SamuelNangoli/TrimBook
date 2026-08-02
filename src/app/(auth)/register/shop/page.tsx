@@ -1,8 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 
-import { getCurrentUser } from "@/lib/dal";
 import {
   Card,
   CardContent,
@@ -11,44 +9,34 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AuthForm } from "@/components/auth/auth-form";
-import { StartShopForm } from "./start-shop-form";
+import { ShopRegisterForm } from "./shop-register-form";
 
 export const metadata: Metadata = { title: "Start your barbershop" };
 
-export default async function StartShopPage() {
-  const user = await getCurrentUser();
-
-  // Already a shop owner/staff? Send them to their dashboard.
-  if (user && user.shopId) redirect("/dashboard");
-
-  const googleEnabled = Boolean(process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET);
-
+export default function ShopRegisterPage() {
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-xl">Start your barbershop</CardTitle>
         <CardDescription>
-          {user
-            ? "Tell us about your shop to begin your 14-day free trial."
-            : "First, sign in or create your account — then set up your shop."}
+          14-day free trial. No card required. UGX 25,000/month after.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        {user ? (
-          <StartShopForm />
-        ) : (
-          <AuthForm googleEnabled={googleEnabled} callbackUrl="/register/shop" />
-        )}
+        <ShopRegisterForm />
       </CardContent>
-      <CardFooter>
-        <p className="text-sm text-muted-foreground">
-          Just want to book a cut?{" "}
-          <Link href="/shops" className="font-medium text-foreground underline-offset-4 hover:underline">
-            Browse barbershops
+      <CardFooter className="text-sm text-muted-foreground">
+        <p>
+          Already registered?{" "}
+          <Link
+            href="/login"
+            className="font-medium text-foreground underline-offset-4 hover:underline"
+          >
+            Sign in
           </Link>
         </p>
       </CardFooter>
     </Card>
   );
 }
+

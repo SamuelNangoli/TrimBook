@@ -1,97 +1,183 @@
 "use server";
 
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 
-import { signIn, signOut, updateSession } from "@/lib/auth";
-import { getCurrentUser } from "@/lib/dal";
-import { emailAuthSchema, startShopSchema } from "@/lib/validations/auth";
-import { createShopForUser } from "@/server/services/auth.service";
+import { signIn, signOut } from "@/lib/auth";
+import { prisma } from "@/lib/db/prisma";
+import { ROLE_HOME } from "@/lib/constants";
+import {
+  loginSchema,
+  registerSchema,
+  shopRegisterSchema,
+} from "@/lib/validations/auth";
+import {
+  registerCustomer,
+  registerShopOwner,
+  EmailTakenError,
+} from "@/server/services/auth.service";
 
+/**
+ * Server Actions for authentication. Each returns a discriminated `FormState`
+ * the client form renders. All validation runs here on the server — the client
+ * schema is only for instant UX feedback.
+ */
 export type FormState =
-  | { ok: true; message?: string }
+  | { ok: true; redirectTo?: string }
   | { ok: false; message?: string; fieldErrors?: Record<string, string[]> }
   | null;
 
-/** Only allow same-site relative callback paths. */
-function safeCallback(value: FormDataEntryValue | null): string {
-  const cb = typeof value === "string" ? value : "";
-  return cb.startsWith("/") && !cb.startsWith("//") ? cb : "/";
+/**
+ * Turn an unexpected error (most commonly a database connection/credentials
+ * failure) into a friendly form message instead of letting it crash the page.
+ */
+function unexpected(error: unknown): { ok: false; message: string } {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (
+    /database|connection|ECONNREFUSED|ENOTFOUND|authentication failed|prisma|P1\d{3}/i.test(
+      msg,
+    )
+  ) {
+    console.error("[auth] database error:", msg);
+    return {
+      ok: false,
+      message:
+        "We can't reach the database right now. Please check the connection and try again.",
+    };
+  }
+  console.error("[auth] unexpected error:", error);
+  return { ok: false, message: "Something went wrong. Please try again." };
 }
 
 // -----------------------------------------------------------------------------
-// Google OAuth
+// Login
 // -----------------------------------------------------------------------------
-export async function signInWithGoogleAction(formData: FormData): Promise<void> {
-  const callbackUrl = safeCallback(formData.get("callbackUrl"));
-  // Redirects to Google; the NEXT_REDIRECT it throws must propagate.
-  await signIn("google", { redirectTo: callbackUrl });
-}
-
-// -----------------------------------------------------------------------------
-// Email magic link
-// -----------------------------------------------------------------------------
-export async function signInWithEmailAction(
+export async function loginAction(
   _prev: FormState,
   formData: FormData,
 ): Promise<FormState> {
-  const parsed = emailAuthSchema.safeParse({ email: formData.get("email") });
-  if (!parsed.success) {
-    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
-  }
-  const callbackUrl = safeCallback(formData.get("callbackUrl"));
-
-  try {
-    // Sends the magic link, then redirects to the "check your email" page.
-    await signIn("resend", { email: parsed.data.email, redirectTo: callbackUrl });
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return { ok: false, message: "We couldn't send your link. Please try again." };
-    }
-    throw error; // NEXT_REDIRECT — must propagate
-  }
-  return { ok: true };
-}
-
-// -----------------------------------------------------------------------------
-// Start a shop (signed-in user becomes an OWNER)
-// -----------------------------------------------------------------------------
-export async function createShopAction(
-  _prev: FormState,
-  formData: FormData,
-): Promise<FormState> {
-  const user = await getCurrentUser();
-  if (!user) redirect("/login?callbackUrl=/start-shop");
-
-  const parsed = startShopSchema.safeParse({
-    shopName: formData.get("shopName"),
-    city: formData.get("city"),
-    phone: formData.get("phone"),
+  const parsed = loginSchema.safeParse({
+    email: formData.get("email"),
+    password: formData.get("password"),
   });
   if (!parsed.success) {
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   }
 
-  let shopId: string;
+  // Compute the destination BEFORE signing in (role home, or a safe callback).
+  const user = await prisma.user.findUnique({
+    where: { email: parsed.data.email },
+    select: { role: true },
+  });
+  const cb = String(formData.get("callbackUrl") ?? "");
+  const safeCb = cb.startsWith("/") && !cb.startsWith("//") ? cb : null;
+  const redirectTo = safeCb ?? (user ? ROLE_HOME[user.role] : "/account");
+
   try {
-    const res = await createShopForUser(user.id, parsed.data);
-    shopId = res.shopId;
+    // Let Auth.js set the session cookie AND issue the redirect in one response
+    // (a 303). This is far more reliable on serverless than setting the cookie
+    // and then navigating client-side, which could land back on /login.
+    await signIn("credentials", {
+      email: parsed.data.email,
+      password: parsed.data.password,
+      redirectTo,
+    });
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Could not create your shop.";
-    return { ok: false, message: msg };
+    if (error instanceof AuthError) {
+      return { ok: false, message: "Invalid email or password." };
+    }
+    // A successful sign-in throws NEXT_REDIRECT — it MUST propagate.
+    throw error;
   }
 
-  // Refresh the JWT so the user is immediately an OWNER of the new shop.
-  await updateSession({ role: "OWNER", shopId } as never);
+  return { ok: true, redirectTo };
+}
 
-  redirect("/dashboard");
+// -----------------------------------------------------------------------------
+// Customer registration
+// -----------------------------------------------------------------------------
+export async function registerCustomerAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = registerSchema.safeParse({
+    name: formData.get("name"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
+  }
+
+  try {
+    await registerCustomer(parsed.data);
+    // Auto sign-in after registration.
+    await signIn("credentials", {
+      email: parsed.data.email,
+      password: parsed.data.password,
+      redirect: false,
+    });
+  } catch (error) {
+    if (error instanceof EmailTakenError) {
+      return { ok: false, fieldErrors: { email: [error.message] } };
+    }
+    if (error instanceof AuthError) {
+      return { ok: false, message: "Could not sign you in. Please try logging in." };
+    }
+    return unexpected(error);
+  }
+
+  return { ok: true, redirectTo: ROLE_HOME.CUSTOMER };
+}
+
+// -----------------------------------------------------------------------------
+// Shop-owner onboarding
+// -----------------------------------------------------------------------------
+export async function registerShopAction(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  const parsed = shopRegisterSchema.safeParse({
+    ownerName: formData.get("ownerName"),
+    shopName: formData.get("shopName"),
+    email: formData.get("email"),
+    phone: formData.get("phone"),
+    city: formData.get("city"),
+    password: formData.get("password"),
+    confirmPassword: formData.get("confirmPassword"),
+  });
+  if (!parsed.success) {
+    return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
+  }
+
+  try {
+    await registerShopOwner(parsed.data);
+    await signIn("credentials", {
+      email: parsed.data.email,
+      password: parsed.data.password,
+      redirect: false,
+    });
+  } catch (error) {
+    if (error instanceof EmailTakenError) {
+      return { ok: false, fieldErrors: { email: [error.message] } };
+    }
+    if (error instanceof AuthError) {
+      return { ok: false, message: "Account created, but sign-in failed. Please log in." };
+    }
+    return unexpected(error);
+  }
+
+  return { ok: true, redirectTo: ROLE_HOME.OWNER };
 }
 
 // -----------------------------------------------------------------------------
 // Logout
 // -----------------------------------------------------------------------------
 export async function logoutAction(): Promise<void> {
+  // Build an absolute redirect from the real request host so logout always
+  // returns to the current domain — never a stale AUTH_URL (e.g. localhost).
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
   const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");

@@ -20,9 +20,6 @@ Copy the values marked *(from your local `.env`)* straight out of your local
 | `AUTH_SECRET` | *(from your local `.env`)* |
 | `CRON_SECRET` | *(from your local `.env`)* |
 | `AUTH_TRUST_HOST` | `true` |
-| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | Google OAuth client (see below). Omit to hide the Google button. |
-| `AUTH_RESEND_KEY` | Resend API key for magic-link emails (see below). |
-| `EMAIL_FROM` | e.g. `TrimBook <no-reply@yourdomain.com>` (a Resend-verified sender). |
 | `NEXT_PUBLIC_APP_URL` | Your production URL, e.g. `https://trimbook.yourdomain.com` |
 
 Optional (have sane defaults, override only if needed): `TRIAL_DAYS`,
@@ -34,18 +31,6 @@ Optional (have sane defaults, override only if needed): `TRIAL_DAYS`,
 > host automatically, so login/logout redirect to the correct domain. A stale
 > `localhost` value here is the usual cause of *"page cannot be reached"* after
 > logout. `NEXT_PUBLIC_APP_URL` should be your real domain (used only for links).
-
-## 1b. Passwordless sign-in setup
-
-**Google OAuth** (console.cloud.google.com → APIs & Services → Credentials →
-Create OAuth client ID → Web application):
-- Authorized JavaScript origin: `https://your-domain`
-- Authorized redirect URI: `https://your-domain/api/auth/callback/google`
-- Copy the Client ID/Secret into `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`.
-
-**Magic-link email** (resend.com): create an API key → set `AUTH_RESEND_KEY`.
-Verify a sending domain and set `EMAIL_FROM` to an address on it. Without a key,
-sign-in links are logged to the server console (fine for local dev, not prod).
 
 ## 2. Redeploy
 
