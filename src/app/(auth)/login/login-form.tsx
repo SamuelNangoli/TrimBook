@@ -34,6 +34,7 @@ export function LoginForm() {
 
   return (
     <form action={action} className="space-y-4">
+      <input type="hidden" name="callbackUrl" value={searchParams.get("callbackUrl") ?? ""} />
       {generalError && (
         <p
           role="alert"

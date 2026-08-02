@@ -64,26 +64,32 @@ export async function loginAction(
     return { ok: false, fieldErrors: parsed.error.flatten().fieldErrors };
   }
 
+  // Compute the destination BEFORE signing in (role home, or a safe callback).
+  const user = await prisma.user.findUnique({
+    where: { email: parsed.data.email },
+    select: { role: true },
+  });
+  const cb = String(formData.get("callbackUrl") ?? "");
+  const safeCb = cb.startsWith("/") && !cb.startsWith("//") ? cb : null;
+  const redirectTo = safeCb ?? (user ? ROLE_HOME[user.role] : "/account");
+
   try {
-    // redirect:false so we can return a role-aware destination to the client.
+    // Let Auth.js set the session cookie AND issue the redirect in one response
+    // (a 303). This is far more reliable on serverless than setting the cookie
+    // and then navigating client-side, which could land back on /login.
     await signIn("credentials", {
       email: parsed.data.email,
       password: parsed.data.password,
-      redirect: false,
+      redirectTo,
     });
   } catch (error) {
     if (error instanceof AuthError) {
       return { ok: false, message: "Invalid email or password." };
     }
-    return unexpected(error);
+    // A successful sign-in throws NEXT_REDIRECT — it MUST propagate.
+    throw error;
   }
 
-  // Sign-in succeeded — route the user to their role's home.
-  const user = await prisma.user.findUnique({
-    where: { email: parsed.data.email },
-    select: { role: true },
-  });
-  const redirectTo = user ? ROLE_HOME[user.role] : "/";
   return { ok: true, redirectTo };
 }
 
@@ -173,8 +179,9 @@ export async function logoutAction(): Promise<void> {
   // Build an absolute redirect from the real request host so logout always
   // returns to the current domain — never a stale AUTH_URL (e.g. localhost).
   const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  const proto = h.get("x-forwarded-proto") ?? "https";
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  const isLocal = host.startsWith("localhost") || host.startsWith("127.0.0.1");
+  const proto = h.get("x-forwarded-proto") ?? (isLocal ? "http" : "https");
   const redirectTo = host ? `${proto}://${host}/login` : "/login";
   // signOut throws a NEXT_REDIRECT that must propagate — do not catch it.
   await signOut({ redirectTo });
